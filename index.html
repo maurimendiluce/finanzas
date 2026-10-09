@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Finanzas personales</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<section id="login" hidden>
+  <form id="login-form" class="card login-card">
+    <h1>Finanzas personales</h1>
+    <label>Email <input type="email" id="email" autocomplete="username" required></label>
+    <label>Contraseña <input type="password" id="password" autocomplete="current-password" required></label>
+    <button type="submit" class="primary">Ingresar</button>
+    <p id="login-error" class="error" role="alert"></p>
+  </form>
+</section>
+
+<main id="app" hidden>
+  <header class="topbar">
+    <h1>Finanzas personales</h1>
+    <div class="topbar-actions">
+      <span id="status" class="muted" aria-live="polite"></span>
+      <button id="add-month">+ Mes</button>
+      <button id="logout">Salir</button>
+    </div>
+  </header>
+
+  <section class="summary" id="summary"></section>
+
+  <section class="card">
+    <h2>Ingresos, gastos y balance</h2>
+    <div class="chart-wrap"><canvas id="chart"></canvas></div>
+  </section>
+
+  <section class="card">
+    <p class="muted hint">Click en una celda para editarla. Podés escribir cuentas (<code>42727+290000</code>); vacío borra el valor. Usá punto para decimales.</p>
+    <div class="table-scroll"><table id="sheet"></table></div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="config.js"></script>
+<script src="calc.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

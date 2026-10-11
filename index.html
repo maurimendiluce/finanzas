@@ -28,16 +28,59 @@
     </div>
   </header>
 
-  <section class="summary" id="summary"></section>
+  <nav class="tabs" id="tabs">
+    <button data-tab="panel">Panel</button>
+    <button data-tab="planilla">Planilla</button>
+    <button data-tab="servicios">Servicios</button>
+    <button data-tab="inflacion">Inflación</button>
+  </nav>
 
-  <section class="card">
-    <h2>Ingresos, gastos y balance</h2>
-    <div class="chart-wrap"><canvas id="chart"></canvas></div>
+  <div class="monthbar" id="monthbar">
+    <button id="m-prev" aria-label="Mes anterior">◀</button>
+    <select id="m-sel" aria-label="Mes"></select>
+    <button id="m-next" aria-label="Mes siguiente">▶</button>
+    <button id="m-today">Mes en curso</button>
+  </div>
+
+  <section data-view="panel">
+    <div class="summary" id="summary"></div>
+    <div class="grid2">
+      <div class="card"><h2>Dónde se va la plata</h2><div id="bars"></div></div>
+      <div class="card"><h2>Últimos meses</h2><div class="chart-wrap"><canvas id="chart-trend"></canvas></div></div>
+    </div>
+    <div class="card"><h2>Detalle vs. mes anterior</h2><div class="table-scroll"><table id="detail"></table></div></div>
   </section>
 
-  <section class="card">
-    <p class="muted hint">Click en una celda para editarla. Podés escribir cuentas (<code>42727+290000</code>); vacío borra el valor. Usá punto para decimales.</p>
-    <div class="table-scroll"><table id="sheet"></table></div>
+  <section data-view="planilla" hidden>
+    <div class="card">
+      <p class="muted hint">Click en una celda para editarla. Podés escribir cuentas (<code>42727+290000</code>); vacío borra el valor. Usá punto para decimales.</p>
+      <div class="table-scroll"><table id="sheet"></table></div>
+    </div>
+  </section>
+
+  <section data-view="servicios" hidden>
+    <div class="card">
+      <h2>Servicios del mes</h2>
+      <p class="muted hint">Editá el monto de cada factura y el % que paga Sabri. Un % nuevo vale desde este mes en adelante (los meses anteriores no cambian). En gris: valor heredado de un mes anterior.</p>
+      <div class="table-scroll"><table id="serv"></table></div>
+      <div id="serv-note"></div>
+    </div>
+  </section>
+
+  <section data-view="inflacion" hidden>
+    <div class="card">
+      <div class="row-between">
+        <h2>Ingresos vs. inflación</h2>
+        <button id="ipc-fetch">Actualizar IPC desde INDEC</button>
+      </div>
+      <div id="inc-filter" class="chips"></div>
+      <div class="chart-wrap"><canvas id="chart-ipc"></canvas></div>
+      <p id="ipc-msg" class="muted hint"></p>
+    </div>
+    <div class="card">
+      <div class="table-scroll"><table id="ipc-table"></table></div>
+      <p class="muted hint">La inflación mensual se puede editar a mano (en %). El primer mes es la base (100). El INDEC publica el IPC a mediados del mes siguiente, así que los últimos meses pueden quedar sin dato.</p>
+    </div>
   </section>
 </main>
 

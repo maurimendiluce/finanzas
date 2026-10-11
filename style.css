@@ -64,3 +64,27 @@ tr.sub td:first-child { padding-left: 24px; }
 tr.card-title td:first-child { font-weight: 600; }
 tr.total td { font-weight: 700; border-top: 2px solid var(--line); }
 tr.balance td { font-weight: 700; font-size: 1.05rem; }
+
+/* ---- v2: pestañas, panel, inflación ---- */
+.tabs { display: flex; gap: 4px; margin-top: 16px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 14px; color: var(--muted); }
+.tabs button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.monthbar { display: flex; gap: 8px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+.monthbar select { width: auto; min-width: 140px; padding: 6px 10px; }
+button:disabled { opacity: .4; cursor: default; }
+section[data-view] > .card:first-child, section[data-view] > .summary { margin-top: 16px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+.grid2 .card { margin-top: 16px; }
+.stat .sub { font-size: .8rem; min-height: 1.2em; color: var(--muted); }
+.bar-row { display: grid; grid-template-columns: 110px 1fr auto; gap: 10px; align-items: center; padding: 4px 0; }
+.bar-label { font-size: .9rem; }
+.bar { background: var(--head); border-radius: 4px; height: 12px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--c-gas); border-radius: 4px; }
+.bar-val { font-variant-numeric: tabular-nums; text-align: right; font-size: .9rem; white-space: nowrap; }
+.row-between { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.row-between h2 { margin: 0; }
+.chips { display: flex; gap: 8px 14px; flex-wrap: wrap; align-items: center; margin: 12px 0; font-size: .9rem; }
+.chip { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.chip input { width: auto; }
+th.cur { color: var(--accent); }

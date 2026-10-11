@@ -1,8 +1,8 @@
 // Completar con los datos de tu proyecto (Supabase > Project Settings > API).
 // La anon key es pública por diseño: la seguridad la da RLS (ver supabase/schema.sql).
 window.CONFIG = {
-  SUPABASE_URL: "https://gebxenbehwtmyrajoevr.supabase.co",
-  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdlYnhlbmJlaHd0bXlyYWpvZXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NjM0MjAsImV4cCI6MjEwNzEzOTQyMH0.a0viDPJAKtxWbGDwAJXEkLqoMv-1YTWBnR9vjCA79mo",
+  SUPABASE_URL: "https://TU-PROYECTO.supabase.co",
+  SUPABASE_ANON_KEY: "TU-ANON-KEY",
 
   // Estructura de la planilla (filas que siempre se muestran)
   INGRESOS: ["UBA", "CONICET", "FACULTAD", "Paula", "Extra"],

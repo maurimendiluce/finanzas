@@ -12,6 +12,14 @@
 1. Subir la carpeta a un repo (`seed.sql` está en `.gitignore`: tiene tus datos, no lo subas).
 2. Settings → Pages → Deploy from branch → `main` / root.
 
+## Pestañas
+- **Panel**: mes en curso (o el que elijas con ◀ ▶ / selector) con ingresos, gastos, balance, comparación con el mes anterior, dónde se va la plata y tendencia de 6 meses.
+- **Planilla**: todos los meses, editable.
+- **Servicios**: montos y % que paga Sabri por servicio, y tu % de la parte de la casa. Un % nuevo vale desde ese mes en adelante.
+- **Inflación**: ingresos vs IPC (INDEC, nivel general nacional). "Actualizar IPC desde INDEC" lo trae solo; también se edita a mano. Podés elegir qué ingresos contar (p. ej. sin "Extra").
+
+No hace falta cambiar el esquema de Supabase: porcentajes e IPC se guardan en la misma tabla `entries`.
+
 ## Notas
 - Seguridad: la anon key es pública; los datos quedan protegidos por RLS (cada usuario solo ve sus filas).
 - La fila fija **Servicios** se calcula sola desde las Facturas (luz, agua, gas, ABL) con los porcentajes de `config.js`. Si escribís un valor a mano en esa celda, gana el manual (como en septiembre/octubre de tu planilla).

@@ -32,6 +32,7 @@
     <button data-tab="panel">Panel</button>
     <button data-tab="planilla">Planilla</button>
     <button data-tab="servicios">Servicios</button>
+    <button data-tab="calendario">Calendario</button>
     <button data-tab="inflacion">Inflación</button>
   </nav>
 
@@ -48,6 +49,7 @@
       <div class="card"><h2>Dónde se va la plata</h2><div id="bars"></div></div>
       <div class="card"><h2>Últimos meses</h2><div class="chart-wrap"><canvas id="chart-trend"></canvas></div></div>
     </div>
+    <div class="card"><h2>Próximos vencimientos</h2><div id="upcoming-panel"></div></div>
     <div class="card"><h2>Detalle vs. mes anterior</h2><div class="table-scroll"><table id="detail"></table></div></div>
   </section>
 
@@ -67,6 +69,26 @@
     </div>
   </section>
 
+  <section data-view="calendario" hidden>
+    <div class="card">
+      <div class="row-between">
+        <div class="cal-nav">
+          <button id="cal-prev" aria-label="Mes anterior">◀</button>
+          <h2 id="cal-title"></h2>
+          <button id="cal-next" aria-label="Mes siguiente">▶</button>
+          <button id="cal-today">Hoy</button>
+        </div>
+        <button id="cal-add" class="primary">+ Vencimiento</button>
+      </div>
+      <p id="cal-summary" class="muted hint"></p>
+      <p id="cal-error" class="error" role="alert"></p>
+      <div class="cal-grid" id="cal-head"></div>
+      <div class="cal-grid" id="cal-grid"></div>
+      <p class="muted hint">Click en un día para agregar un vencimiento, o en uno existente para editarlo o marcarlo como pagado. Los que se repiten cada mes aparecen en todos los meses desde la primera fecha.</p>
+    </div>
+    <div class="card"><h2>Próximos vencimientos</h2><div id="upcoming-cal"></div></div>
+  </section>
+
   <section data-view="inflacion" hidden>
     <div class="card">
       <div class="row-between">
@@ -83,6 +105,26 @@
     </div>
   </section>
 </main>
+
+<dialog id="pay-dialog">
+  <form id="pay-form">
+    <h2 id="pay-heading">Vencimiento</h2>
+    <label>Título <input id="pay-title" required maxlength="80" placeholder="Visa Galicia, Alquiler, Expensas…"></label>
+    <label>Fecha <input id="pay-date" type="date" required></label>
+    <label>Monto (opcional) <input id="pay-amount" inputmode="decimal" placeholder="123456"></label>
+    <label class="check"><input id="pay-monthly" type="checkbox"> Se repite todos los meses</label>
+    <label class="check"><input id="pay-paid" type="checkbox"> <span id="pay-paid-label">Pagado</span></label>
+    <label>Notas <input id="pay-notes" maxlength="200"></label>
+    <p id="pay-hint" class="muted hint"></p>
+    <p id="pay-error" class="error" role="alert"></p>
+    <div class="dialog-actions">
+      <button type="button" id="pay-delete" class="danger">Eliminar</button>
+      <span class="spacer"></span>
+      <button type="button" id="pay-cancel">Cancelar</button>
+      <button type="submit" class="primary">Guardar</button>
+    </div>
+  </form>
+</dialog>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>

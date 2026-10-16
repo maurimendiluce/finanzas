@@ -12,9 +12,14 @@
 1. Subir la carpeta a un repo (`seed.sql` está en `.gitignore`: tiene tus datos, no lo subas).
 2. Settings → Pages → Deploy from branch → `main` / root.
 
+## Actualizar desde la versión anterior
+1. Supabase → SQL Editor → ejecutar `supabase/002_payments.sql` (tabla del calendario; se puede correr más de una vez).
+2. Reemplazar los archivos del repo (conservá tu `config.js`).
+
 ## Pestañas
 - **Panel**: mes en curso (o el que elijas con ◀ ▶ / selector) con ingresos, gastos, balance, comparación con el mes anterior, dónde se va la plata y tendencia de 6 meses.
-- **Planilla**: todos los meses, editable.
+- **Planilla**: todos los meses, editable. Con **+ agregar** en Ingresos, Gastos fijos y Facturas sumás filas nuevas (aparecen en todos los meses, cargás el monto de cada uno); las que agregaste tienen una **×** para quitarlas. Las filas de `config.js` no se pueden quitar desde la pantalla.
+- **Calendario**: vencimientos de pago. Click en un día para agregar; se pueden repetir todos los meses (el 31 cae el último día de los meses más cortos), marcar como pagados y ver los próximos en el Panel. Los vencidos sin pagar se marcan en rojo.
 - **Servicios**: montos y % que paga Sabri por servicio, y tu % de la parte de la casa. Un % nuevo vale desde ese mes en adelante.
 - **Inflación**: ingresos vs IPC (INDEC, nivel general nacional). "Actualizar IPC desde INDEC" lo trae solo; también se edita a mano. Podés elegir qué ingresos contar (p. ej. sin "Extra").
 

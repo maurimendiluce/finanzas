@@ -11,7 +11,7 @@
   const HIDDEN = new Set(["IPC", "Porcentajes"]); // grupos internos: no son meses ni filas de la planilla
 
   const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
-  const state = { user: null, entries: new Map(), months: [], sel: null, tab: "panel", charts: {}, incOff: new Set() };
+  const state = { user: null, entries: new Map(), months: [], sel: null, tab: "panel", charts: {}, incOff: new Set(), payments: [], payErr: null, cal: null };
   const key = (m, g, n) => `${m}|${g}|${n}`;
   const get = (m, g, n) => state.entries.get(key(m, g, n))?.amount;
   const monthLabel = (m) => `${MESES[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}`;
@@ -37,6 +37,7 @@
     }
     state.months = [...ms].sort();
     if (!state.sel || !state.months.includes(state.sel)) state.sel = defaultMonth();
+    await loadPayments();
     renderAll();
   }
 
@@ -114,6 +115,8 @@
     renderPlanilla(nm);
     renderServicios(nm);
     renderInflacion(nm);
+    renderCalendar();
+    renderUpcoming($("upcoming-panel"), 6);
     applyTab();
   }
 
@@ -202,7 +205,7 @@
     const ms = state.months;
     const totals = Object.fromEntries(ms.map((m) => [m, totalsFor(m, nm)]));
     const head = `<tr><th></th>${ms.map((m) => `<th class="${m === state.sel ? "cur" : ""}">${monthLabel(m)}</th>`).join("")}</tr>`;
-    const section = (t) => `<tr class="section"><td colspan="${ms.length + 1}">${esc(t)}</td></tr>`;
+    const section = (t, g) => `<tr class="section"><td colspan="${ms.length + 1}">${esc(t)}${g ? ` <button class="mini" data-add="${g}">+ agregar</button>` : ""}</td></tr>`;
     const cell = (m, grp, name, autoVal) => {
       const v = get(m, grp, name);
       const auto = v === undefined && autoVal !== undefined;
@@ -211,7 +214,7 @@
         `${auto ? ' title="Calculado desde Facturas (pestaña Servicios); escribí un valor para reemplazarlo"' : ""}>${shown === undefined ? "" : money(shown)}</td>`;
     };
     const line = (label, grp, name, cls, autoFn) =>
-      `<tr class="${cls || ""}"><td>${esc(label)}</td>${ms.map((m) => cell(m, grp, name, autoFn ? autoFn(m) : undefined)).join("")}</tr>`;
+      `<tr class="${cls || ""}"><td>${esc(label)}${isCustom(grp, name) ? ` <button class="mini del" data-del data-g="${esc(grp)}" data-n="${esc(name)}" title="Quitar esta fila de todos los meses" aria-label="Quitar ${esc(name)}">×</button>` : ""}</td>${ms.map((m) => cell(m, grp, name, autoFn ? autoFn(m) : undefined)).join("")}</tr>`;
     const totalRow = (label, fn, cls = "total") =>
       `<tr class="${cls}"><td>${esc(label)}</td>${ms.map((m) => {
         const v = fn(m); const c = cls === "balance" ? (v < 0 ? "neg" : "pos") : "";
@@ -219,10 +222,10 @@
 
     let h = head;
     h += totalRow("Balance", (m) => totals[m].balance, "balance");
-    h += section("Ingresos");
+    h += section("Ingresos", "Ingresos");
     for (const n of nm.Ingresos) h += line(n, "Ingresos", n, "sub");
     h += totalRow("Total ingresos", (m) => totals[m].ingresos);
-    h += section("Gastos fijos");
+    h += section("Gastos fijos", "Fijos");
     for (const n of nm.Fijos) h += line(n, "Fijos", n, "sub", n === "Servicios" ? (m) => totals[m].servicioAuto : null);
     h += totalRow("Total fijos", (m) => totals[m].fijos);
     h += section("Tarjetas");
@@ -231,7 +234,7 @@
       for (const f of cfg.TARJETA_FILAS) h += line(f, t, f, "sub");
       h += totalRow(`Total ${t}`, (m) => totals[m].tarjetas[t]);
     }
-    h += section("Facturas de servicios");
+    h += section("Facturas de servicios", "Facturas");
     for (const f of nm.Facturas) h += line(f, "Facturas", f, "sub");
     h += totalRow("Total gastos", (m) => totals[m].gastos, "total");
     $("sheet").innerHTML = h;
@@ -396,11 +399,200 @@
     renderAll(); // los gráficos ocultos no miden bien: se redibujan al mostrarse
   });
   const h0 = location.hash.slice(1);
-  if (["panel", "planilla", "servicios", "inflacion"].includes(h0)) state.tab = h0;
+  if (["panel", "planilla", "servicios", "calendario", "inflacion"].includes(h0)) state.tab = h0;
 
   $("ipc-fetch").addEventListener("click", fetchIPC);
   $("add-month").addEventListener("click", addMonth);
   $("logout").addEventListener("click", () => sb.auth.signOut());
+
+  // ---------- agregar / quitar filas de la planilla ----------
+  const CFG_ROWS = { Ingresos: cfg.INGRESOS, Fijos: cfg.FIJOS, Facturas: cfg.FACTURAS };
+  const isCustom = (grp, name) => !!CFG_ROWS[grp] && !CFG_ROWS[grp].includes(name);
+
+  async function addRow(grp) {
+    const label = { Ingresos: "ingreso", Fijos: "gasto fijo", Facturas: "servicio" }[grp];
+    const name = (prompt(`Nombre del nuevo ${label}:`) || "").trim().slice(0, 40);
+    if (!name) return;
+    if (name.includes("|")) { setStatus("El nombre no puede incluir “|”", true); return; }
+    if (names()[grp].some((n) => n.toLowerCase() === name.toLowerCase())) { setStatus(`Ya existe “${name}”`, true); return; }
+    const month = state.sel || state.months[state.months.length - 1];
+    if (!month) { setStatus("Primero creá un mes con “+ Mes”", true); return; }
+    // la fila existe mientras tenga algún valor cargado: se crea con 0 en el mes seleccionado
+    const { data, error } = await sb.from("entries")
+      .upsert({ user_id: state.user.id, month, grp, name, amount: 0, expr: null }, { onConflict: "user_id,month,grp,name" })
+      .select("id").single();
+    if (error) { setStatus(error.message, true); return; }
+    state.entries.set(key(month, grp, name), { id: data.id, amount: 0, expr: null });
+    setStatus(`“${name}” agregado. Cargá los montos de cada mes en la planilla.`);
+    renderAll();
+  }
+
+  async function removeRow(grp, name) {
+    if (!confirm(`¿Quitar “${name}” de todos los meses? Se borran los montos cargados.`)) return;
+    const grps = grp === "Facturas" ? ["Facturas", "Porcentajes"] : [grp];
+    for (const g of grps) {
+      const { error } = await sb.from("entries").delete().eq("grp", g).eq("name", name);
+      if (error) { setStatus(error.message, true); return; }
+      for (const k of [...state.entries.keys()]) { const [, kg, kn] = k.split("|"); if (kg === g && kn === name) state.entries.delete(k); }
+    }
+    setStatus(`“${name}” quitado`);
+    renderAll();
+  }
+
+  // ---------- calendario de pagos ----------
+  const MESES_L = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+  const DOW = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const isoDay = (y, m, d) => `${y}-${pad2(m)}-${pad2(d)}`;
+  const todayISO = () => { const d = new Date(); return isoDay(d.getFullYear(), d.getMonth() + 1, d.getDate()); };
+  const utc = (iso) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10));
+  const fmtDate = (iso) => `${DOW[(new Date(utc(iso)).getUTCDay() + 6) % 7]} ${+iso.slice(8, 10)} ${MESES[+iso.slice(5, 7) - 1]}`;
+  const daysFrom = (iso) => Math.round((utc(iso) - utc(todayISO())) / 864e5); // >0 futuro
+
+  async function loadPayments() {
+    const { data, error } = await sb.from("payments").select("id,title,due_date,recurrence,amount,notes,paid_dates").order("due_date");
+    if (error) {
+      state.payments = [];
+      state.payErr = /payments|relation|schema cache/i.test(error.message)
+        ? "Falta crear la tabla del calendario: ejecutá supabase/002_payments.sql en Supabase (SQL Editor)."
+        : "Calendario: " + error.message;
+      return;
+    }
+    state.payErr = null; state.payments = data;
+  }
+
+  function renderCalendar() {
+    if (!state.cal) state.cal = todayISO().slice(0, 8) + "01";
+    const y = +state.cal.slice(0, 4), m = +state.cal.slice(5, 7);
+    $("cal-title").textContent = `${MESES_L[m - 1]} ${y}`;
+    $("cal-error").textContent = state.payErr || "";
+    $("cal-add").disabled = !!state.payErr;
+    $("cal-head").innerHTML = DOW.map((d) => `<div class="dow">${d}</div>`).join("");
+
+    const dim = Calc.daysIn(y, m), first = isoDay(y, m, 1), last = isoDay(y, m, dim), today = todayISO();
+    const occ = state.payErr ? [] : Calc.occurrences(state.payments, first, last);
+    const byDate = {};
+    for (const o of occ) (byDate[o.date] ||= []).push(o);
+
+    const offset = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7;
+    const total = Math.ceil((offset + dim) / 7) * 7;
+    let h = "";
+    for (let i = 0; i < total; i++) {
+      const d = i - offset + 1;
+      if (d < 1 || d > dim) { h += '<div class="day empty"></div>'; continue; }
+      const date = isoDay(y, m, d);
+      const chips = (byDate[date] || []).map((o) =>
+        `<button type="button" class="pchip ${o.paid ? "paid" : date < today ? "over" : ""}" data-id="${o.id}" data-date="${date}" ` +
+        `title="${esc(o.title)}${o.amount !== null ? " · " + money(o.amount) : ""}${o.paid ? " · pagado" : ""}">` +
+        `<span class="pt">${o.paid ? "✓ " : ""}${esc(o.title)}</span>${o.amount !== null ? `<b>${money(o.amount)}</b>` : ""}</button>`).join("");
+      h += `<div class="day${date === today ? " today" : ""}" data-date="${date}"><span class="dn">${d}</span>${chips}</div>`;
+    }
+    $("cal-grid").innerHTML = h;
+
+    const pend = occ.filter((o) => !o.paid), done = occ.filter((o) => o.paid);
+    const sum = (a) => a.reduce((s, o) => s + (o.amount || 0), 0);
+    $("cal-summary").textContent = occ.length
+      ? `Este mes: ${pend.length} pendiente${pend.length === 1 ? "" : "s"}${sum(pend) ? ` (${money(sum(pend))})` : ""} · ${done.length} pagado${done.length === 1 ? "" : "s"}${sum(done) ? ` (${money(sum(done))})` : ""}`
+      : "";
+    renderUpcoming($("upcoming-cal"), 50);
+  }
+
+  function renderUpcoming(el, limit) {
+    if (state.payErr) { el.innerHTML = `<p class="muted hint">${esc(state.payErr)}</p>`; return; }
+    const t = todayISO();
+    const list = Calc.occurrences(state.payments, Calc.addDays(t, -60), Calc.addDays(t, 30)).filter((o) => !o.paid).slice(0, limit);
+    if (!list.length) { el.innerHTML = '<p class="muted hint">Sin vencimientos pendientes en los próximos 30 días.</p>'; return; }
+    el.innerHTML = list.map((o) => {
+      const n = daysFrom(o.date);
+      const when = n < 0 ? `vencido hace ${-n} día${n === -1 ? "" : "s"}` : n === 0 ? "hoy" : n === 1 ? "mañana" : `en ${n} días`;
+      return `<div class="up-row${n < 0 ? " over" : n <= 3 ? " soon" : ""}">` +
+        `<button type="button" class="tick" data-tick data-id="${o.id}" data-date="${o.date}" title="Marcar como pagado" aria-label="Marcar ${esc(o.title)} como pagado">✓</button>` +
+        `<span class="up-date">${fmtDate(o.date)}</span><span class="up-title">${esc(o.title)}${o.recurrence === "monthly" ? ' <small class="muted">· mensual</small>' : ""}</span>` +
+        `<span class="up-amt">${o.amount !== null ? money(o.amount) : ""}</span><span class="up-when">${when}</span></div>`;
+    }).join("");
+  }
+
+  let payCtx = null; // { id|null, date } del vencimiento que se está editando
+  function openPay({ id = null, date }) {
+    const p = id ? state.payments.find((x) => x.id === id) : null;
+    if (id && !p) return;
+    payCtx = { id, date };
+    const monthly = !!p && p.recurrence === "monthly";
+    $("pay-heading").textContent = p ? "Editar vencimiento" : "Nuevo vencimiento";
+    $("pay-title").value = p ? p.title : "";
+    $("pay-date").value = p ? p.due_date : date;
+    $("pay-amount").value = p && p.amount !== null && p.amount !== undefined ? String(p.amount) : "";
+    $("pay-monthly").checked = monthly;
+    $("pay-notes").value = p?.notes || "";
+    $("pay-paid").checked = !!p && (p.paid_dates || []).includes(date);
+    $("pay-paid-label").textContent = monthly ? `Pagado este mes (${fmtDate(date)})` : "Pagado";
+    $("pay-delete").hidden = !p;
+    $("pay-hint").textContent = monthly ? "Título, monto y repetición valen para toda la serie. Si cambiás la fecha, la serie empieza ese día." : "";
+    $("pay-error").textContent = "";
+    $("pay-dialog").showModal();
+    $("pay-title").focus();
+  }
+
+  async function savePay(e) {
+    e.preventDefault();
+    const err = (t) => { $("pay-error").textContent = t; };
+    const title = $("pay-title").value.trim(), due = $("pay-date").value;
+    if (!title || !due) { err("Completá título y fecha."); return; }
+    let amount = null;
+    const at = $("pay-amount").value.trim();
+    if (at) { const a = Calc.parseAmount(at); if (a.error || a.empty) { err("Monto inválido."); return; } amount = a.amount; }
+    const monthly = $("pay-monthly").checked, checked = $("pay-paid").checked;
+    const old = payCtx.id ? state.payments.find((x) => x.id === payCtx.id) : null;
+    let paid = new Set(old ? old.paid_dates || [] : []);
+    if (!monthly) { paid = new Set(); if (checked) paid.add(due); }
+    else { const occ = old ? payCtx.date : due; if (checked) paid.add(occ); else paid.delete(occ); }
+    const row = { title, due_date: due, recurrence: monthly ? "monthly" : "none", amount, notes: $("pay-notes").value.trim() || null, paid_dates: [...paid].sort() };
+    const q = payCtx.id
+      ? sb.from("payments").update(row).eq("id", payCtx.id)
+      : sb.from("payments").insert({ ...row, user_id: state.user.id });
+    const { error } = await q;
+    if (error) { err(error.message); return; }
+    $("pay-dialog").close();
+    state.cal = due.slice(0, 8) + "01";
+    await loadPayments(); renderAll(); setStatus("Guardado");
+  }
+
+  async function deletePay() {
+    const p = state.payments.find((x) => x.id === payCtx.id);
+    if (!p || !confirm(`¿Eliminar “${p.title}”?${p.recurrence === "monthly" ? " Se borra toda la serie mensual." : ""}`)) return;
+    const { error } = await sb.from("payments").delete().eq("id", p.id);
+    if (error) { $("pay-error").textContent = error.message; return; }
+    $("pay-dialog").close();
+    await loadPayments(); renderAll(); setStatus("Eliminado");
+  }
+
+  async function togglePaid(id, date) {
+    const p = state.payments.find((x) => x.id === id);
+    if (!p) return;
+    const set = new Set(p.paid_dates || []);
+    if (set.has(date)) set.delete(date); else set.add(date);
+    const { error } = await sb.from("payments").update({ paid_dates: [...set].sort() }).eq("id", id);
+    if (error) { setStatus(error.message, true); return; }
+    await loadPayments(); renderAll();
+  }
+
+  const shiftCal = (n) => { const y = +state.cal.slice(0, 4), m = +state.cal.slice(5, 7) - 1 + n; const d = new Date(Date.UTC(y, m, 1)); state.cal = isoDay(d.getUTCFullYear(), d.getUTCMonth() + 1, 1); renderCalendar(); };
+  $("cal-prev").addEventListener("click", () => shiftCal(-1));
+  $("cal-next").addEventListener("click", () => shiftCal(1));
+  $("cal-today").addEventListener("click", () => { state.cal = todayISO().slice(0, 8) + "01"; renderCalendar(); });
+  $("cal-add").addEventListener("click", () => { const t = todayISO(); openPay({ date: t.slice(0, 7) === state.cal.slice(0, 7) ? t : state.cal }); });
+  $("pay-form").addEventListener("submit", savePay);
+  $("pay-cancel").addEventListener("click", () => $("pay-dialog").close());
+  $("pay-delete").addEventListener("click", deletePay);
+
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+    const add = t.closest("[data-add]"); if (add) { addRow(add.dataset.add); return; }
+    const del = t.closest("[data-del]"); if (del) { removeRow(del.dataset.g, del.dataset.n); return; }
+    const tick = t.closest("[data-tick]"); if (tick) { togglePaid(tick.dataset.id, tick.dataset.date); return; }
+    const chip = t.closest(".pchip"); if (chip) { openPay({ id: chip.dataset.id, date: chip.dataset.date }); return; }
+    const day = t.closest(".day[data-date]"); if (day) openPay({ date: day.dataset.date });
+  });
 
   // ---------- sesión ----------
   async function showApp(session) {

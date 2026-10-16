@@ -97,6 +97,43 @@
     } catch { return { error: true }; }
   }
 
-  const api = { resolve, servicioBreakdown, servicioAuto, monthTotals, inflationSeries, parseAmount };
+  // ---- calendario de pagos (fechas como "YYYY-MM-DD", sin zonas horarias) ----
+  const pad = (n) => String(n).padStart(2, "0");
+  const daysIn = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate(); // m: 1-12
+  const iso = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
+  function addDays(dateStr, n) {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const t = new Date(Date.UTC(y, m - 1, d + n));
+    return iso(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
+  }
+
+  // payments: [{id,title,due_date,recurrence,amount,notes,paid_dates}]
+  // Devuelve los vencimientos entre from y to (inclusive), ordenados. Los mensuales caen el mismo día
+  // de cada mes (o el último día si el mes es más corto: el 31 pasa al 30/28).
+  function occurrences(payments, from, to) {
+    const out = [];
+    for (const p of payments) {
+      const paid = new Set((p.paid_dates || []).map(String));
+      const push = (date) => out.push({
+        id: p.id, title: p.title, amount: p.amount === null || p.amount === undefined ? null : Number(p.amount),
+        notes: p.notes || "", recurrence: p.recurrence, date, paid: paid.has(date), series: p.due_date,
+      });
+      if (p.recurrence !== "monthly") {
+        if (p.due_date >= from && p.due_date <= to) push(p.due_date);
+        continue;
+      }
+      const day = +p.due_date.slice(8, 10);
+      let y = +from.slice(0, 4), m = +from.slice(5, 7);
+      const ty = +to.slice(0, 4), tm = +to.slice(5, 7);
+      for (let guard = 0; guard < 600 && (y < ty || (y === ty && m <= tm)); guard++) {
+        const date = iso(y, m, Math.min(day, daysIn(y, m)));
+        if (date >= p.due_date && date >= from && date <= to) push(date);
+        if (++m > 12) { m = 1; y++; }
+      }
+    }
+    return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.title.localeCompare(b.title)));
+  }
+
+  const api = { resolve, servicioBreakdown, servicioAuto, monthTotals, inflationSeries, parseAmount, occurrences, addDays, daysIn };
   if (typeof module !== "undefined") module.exports = api; else root.Calc = api;
 })(typeof window !== "undefined" ? window : globalThis);

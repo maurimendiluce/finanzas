@@ -16,6 +16,15 @@
 1. Supabase → SQL Editor → ejecutar `supabase/002_payments.sql` (tabla del calendario; se puede correr más de una vez).
 2. Reemplazar los archivos del repo (conservá tu `config.js`).
 
+## Alertas en el calendario del celular (una sola vez)
+1. SQL Editor → ejecutar `supabase/003_calendar_feed.sql`.
+2. Publicar la función `calendar`:
+   - **Desde el panel**: Edge Functions → Deploy a new function → Via Editor → nombre `calendar` → pegar el contenido de `supabase/functions/calendar/index.ts` → Deploy. Después, en los ajustes de esa función, **desactivar la verificación de JWT** (los calendarios no pueden mandar credenciales; el acceso lo protege el token privado).
+   - **Con la CLI**: `supabase functions deploy calendar --no-verify-jwt`.
+3. En la app: pestaña Calendario → "Generar enlace" → suscribirlo en el celular (instrucciones en la misma pantalla).
+
+Solo salen los vencimientos pendientes, con alerta a las 9:00 del día (y opcionalmente 1–3 días antes). Si regenerás el enlace, el anterior deja de funcionar.
+
 ## Pestañas
 - **Panel**: mes en curso (o el que elijas con ◀ ▶ / selector) con ingresos, gastos, balance, comparación con el mes anterior, dónde se va la plata y tendencia de 6 meses.
 - **Planilla**: todos los meses, editable. Con **+ agregar** en Ingresos, Gastos fijos y Facturas sumás filas nuevas (aparecen en todos los meses, cargás el monto de cada uno); las que agregaste tienen una **×** para quitarlas. Las filas de `config.js` no se pueden quitar desde la pantalla.

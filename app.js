@@ -11,7 +11,7 @@
   const HIDDEN = new Set(["IPC", "Porcentajes"]); // grupos internos: no son meses ni filas de la planilla
 
   const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
-  const state = { user: null, entries: new Map(), months: [], sel: null, tab: "panel", charts: {}, incOff: new Set(), payments: [], payErr: null, cal: null };
+  const state = { user: null, entries: new Map(), months: [], sel: null, tab: "panel", charts: {}, incOff: new Set(), payments: [], payErr: null, cal: null, feed: null, feedErr: null, feedBefore: 0 };
   const key = (m, g, n) => `${m}|${g}|${n}`;
   const get = (m, g, n) => state.entries.get(key(m, g, n))?.amount;
   const monthLabel = (m) => `${MESES[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}`;
@@ -38,6 +38,7 @@
     state.months = [...ms].sort();
     if (!state.sel || !state.months.includes(state.sel)) state.sel = defaultMonth();
     await loadPayments();
+    await loadFeed();
     renderAll();
   }
 
@@ -116,6 +117,7 @@
     renderServicios(nm);
     renderInflacion(nm);
     renderCalendar();
+    renderFeed();
     renderUpcoming($("upcoming-panel"), 6);
     applyTab();
   }
@@ -593,6 +595,58 @@
     const chip = t.closest(".pchip"); if (chip) { openPay({ id: chip.dataset.id, date: chip.dataset.date }); return; }
     const day = t.closest(".day[data-date]"); if (day) openPay({ date: day.dataset.date });
   });
+
+  // ---------- enlace para suscribir el calendario del celular ----------
+  const hex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+  async function loadFeed() {
+    const { data, error } = await sb.from("calendar_feed").select("token").maybeSingle();
+    if (error) {
+      state.feed = null;
+      state.feedErr = /calendar_feed|relation|schema cache/i.test(error.message) ? "setup" : error.message;
+      return;
+    }
+    state.feedErr = null; state.feed = data ? data.token : null;
+  }
+
+  async function newFeedToken() {
+    const { error } = await sb.from("calendar_feed").upsert({ user_id: state.user.id, token: hex(24) }, { onConflict: "user_id" });
+    if (error) { setStatus(error.message, true); return; }
+    await loadFeed(); renderFeed(); setStatus("Enlace generado");
+  }
+
+  function feedUrl(proto) {
+    const host = new URL(cfg.SUPABASE_URL).host;
+    return `${proto}//${host}/functions/v1/calendar?token=${state.feed}` + (state.feedBefore ? `&before=${state.feedBefore}` : "");
+  }
+
+  function renderFeed() {
+    const card = $("feed-card"), el = $("feed");
+    card.hidden = !!state.payErr;
+    if (state.payErr) return;
+    if (state.feedErr === "setup") { el.innerHTML = '<p class="muted hint">Falta ejecutar <code>supabase/003_calendar_feed.sql</code> en Supabase (SQL Editor) y publicar la función <code>calendar</code>. Los pasos están en el README.</p>'; return; }
+    if (state.feedErr) { el.innerHTML = `<p class="error">${esc(state.feedErr)}</p>`; return; }
+    if (!state.feed) {
+      el.innerHTML = '<p class="muted hint">Generá un enlace privado y suscribilo en el calendario del celular: cada vencimiento pendiente aparece como evento con alerta a las 9:00 del día.</p><button id="feed-gen" class="primary">Generar enlace</button>';
+      $("feed-gen").addEventListener("click", newFeedToken);
+      return;
+    }
+    el.innerHTML =
+      '<p class="muted hint">Suscribí este enlace en el calendario del celular. Cada vencimiento pendiente aparece como evento de todo el día con alerta a las 9:00. Es privado: no lo compartas.</p>' +
+      `<div class="feed-row"><input id="feed-url" readonly value="${esc(feedUrl("https:"))}" aria-label="Enlace del calendario"><button id="feed-copy">Copiar</button></div>` +
+      `<label class="check feed-opt">Además, avisar <select id="feed-before">${[0, 1, 2, 3].map((n) => `<option value="${n}"${n === state.feedBefore ? " selected" : ""}>${n === 0 ? "solo el día del vencimiento" : n === 1 ? "1 día antes" : n + " días antes"}</option>`).join("")}</select></label>` +
+      `<p class="hint"><a id="feed-webcal" href="${esc(feedUrl("webcal:"))}">Abrir en Calendario (iPhone / Mac)</a> · <button id="feed-rotate" class="mini">Generar enlace nuevo</button></p>` +
+      '<details class="hint"><summary>Cómo suscribirse</summary>' +
+      '<p><b>iPhone:</b> tocá “Abrir en Calendario”, o andá a Ajustes → Calendario → Cuentas → Añadir cuenta → Otra → Añadir calendario suscrito y pegá el enlace. Las alertas ya vienen en cada evento.</p>' +
+      '<p><b>Android / Google Calendar:</b> desde calendar.google.com en una computadora: Otros calendarios (+) → Desde URL → pegá el enlace. Después, en la configuración del calendario “Pagos”, agregá una notificación de eventos de todo el día (por ejemplo “el mismo día a las 9:00”), porque Google ignora las alertas del enlace y usa las suyas. Aparece solo en el celular tras sincronizar.</p>' +
+      '<p>Los calendarios refrescan los enlaces cada cierto tiempo (en Google puede tardar hasta un día): si marcás un pago como pagado, la alerta puede llegar una vez más hasta que se actualice. “Generar enlace nuevo” invalida el anterior.</p></details>';
+    $("feed-copy").addEventListener("click", async () => {
+      const i = $("feed-url");
+      try { await navigator.clipboard.writeText(i.value); setStatus("Enlace copiado"); } catch { i.select(); setStatus("Copiá con Ctrl+C"); }
+    });
+    $("feed-before").addEventListener("change", (e) => { state.feedBefore = +e.target.value; renderFeed(); });
+    $("feed-rotate").addEventListener("click", () => { if (confirm("El enlace actual dejará de funcionar y tendrás que volver a suscribir el calendario. ¿Continuar?")) newFeedToken(); });
+  }
 
   // ---------- sesión ----------
   async function showApp(session) {

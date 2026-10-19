@@ -27,7 +27,7 @@ Solo salen los vencimientos pendientes, con alerta a las 9:00 del día (y opcion
 
 ## Pestañas
 - **Panel**: mes en curso (o el que elijas con ◀ ▶ / selector) con ingresos, gastos, balance, comparación con el mes anterior, dónde se va la plata y tendencia de 6 meses.
-- **Planilla**: todos los meses, editable. Con **+ agregar** en Ingresos, Gastos fijos y Facturas sumás filas nuevas (aparecen en todos los meses, cargás el monto de cada uno); las que agregaste tienen una **×** para quitarlas. Las filas de `config.js` no se pueden quitar desde la pantalla.
+- **Planilla**: todos los meses, editable. El botón **Eliminar mes** (arriba, junto al selector de mes) borra el mes seleccionado. Con **+ agregar** en Ingresos, Gastos fijos y Facturas sumás filas nuevas (aparecen en todos los meses, cargás el monto de cada uno); las que agregaste tienen una **×** para quitarlas. Las filas de `config.js` no se pueden quitar desde la pantalla.
 - **Calendario**: vencimientos de pago. Click en un día para agregar; se pueden repetir todos los meses (el 31 cae el último día de los meses más cortos), marcar como pagados y ver los próximos en el Panel. Los vencidos sin pagar se marcan en rojo.
 - **Servicios**: montos y % que paga Sabri por servicio, y tu % de la parte de la casa. Un % nuevo vale desde ese mes en adelante.
 - **Inflación**: ingresos vs IPC (INDEC, nivel general nacional). "Actualizar IPC desde INDEC" lo trae solo; también se edita a mano. Podés elegir qué ingresos contar (p. ej. sin "Extra").

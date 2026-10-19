@@ -129,6 +129,7 @@
     const i = state.months.indexOf(state.sel);
     $("m-prev").disabled = i <= 0;
     $("m-next").disabled = i < 0 || i >= state.months.length - 1;
+    $("m-del").disabled = !state.sel;
   }
 
   function delta(cur, prev, goodUp) {
@@ -389,10 +390,34 @@
   $("m-next").addEventListener("click", () => go(state.months[state.months.indexOf(state.sel) + 1]));
   $("m-today").addEventListener("click", () => go(defaultMonth()));
 
+  async function deleteMonth() {
+    const m = state.sel;
+    if (!m) return;
+    const keys = [...state.entries.keys()].filter((k) => k.startsWith(m + "|"));
+    const hasPct = keys.some((k) => k.split("|")[1] === "Porcentajes");
+    const later = state.months.some((x) => x > m);
+    const msg = `¿Eliminar ${monthLabel(m)}?\n\n` +
+      (keys.length ? `Se borran sus ${keys.length} valores cargados (ingresos, gastos, tarjetas, facturas e inflación). No se puede deshacer.` : "Este mes no tiene valores cargados.") +
+      (hasPct && later ? "\n\nAtención: este mes define porcentajes de servicios que heredan los meses siguientes; esos meses volverían a usar el porcentaje anterior." : "") +
+      "\n\nLos vencimientos del calendario no se tocan.";
+    if (!confirm(msg)) return;
+    if (keys.length) {
+      const { error } = await sb.from("entries").delete().eq("month", m);
+      if (error) { setStatus(error.message, true); return; }
+      for (const k of keys) state.entries.delete(k);
+    }
+    const i = state.months.indexOf(m);
+    state.months = state.months.filter((x) => x !== m);
+    state.sel = state.months[i - 1] || state.months[i] || null;
+    setStatus(`${monthLabel(m)} eliminado`);
+    renderAll();
+  }
+  $("m-del").addEventListener("click", deleteMonth);
+
   function applyTab() {
     for (const s of document.querySelectorAll("[data-view]")) s.hidden = s.dataset.view !== state.tab;
     for (const b of document.querySelectorAll("#tabs button")) b.classList.toggle("active", b.dataset.tab === state.tab);
-    $("monthbar").hidden = !(state.tab === "panel" || state.tab === "servicios");
+    $("monthbar").hidden = !(state.tab === "panel" || state.tab === "planilla" || state.tab === "servicios");
   }
   $("tabs").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-tab]");

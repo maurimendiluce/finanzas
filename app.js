@@ -8,7 +8,9 @@
   const pct = (v) => `${fmt2.format(v)}%`;                 // v ya en %
   const pctF = (f) => (f >= 0 ? "+" : "") + fmt2.format(f * 100) + "%"; // f fracción
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const HIDDEN = new Set(["IPC", "Porcentajes"]); // grupos internos: no son meses ni filas de la planilla
+  const HIDDEN = new Set(["IPC", "Porcentajes", "Ocultas"]); // grupos internos: no son meses ni filas de la planilla
+  const RESERVED = new Set(["Ingresos", "Fijos", "Facturas", "IPC", "Porcentajes", "Ocultas"]); // no pueden ser nombre de tarjeta
+  const HIDE_MONTH = "2000-01-01"; // mes ficticio donde se guardan las marcas de filas quitadas
 
   const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
   const state = { user: null, entries: new Map(), months: [], sel: null, tab: "panel", charts: {}, incOff: new Set(), payments: [], payErr: null, cal: null, feed: null, feedErr: null, feedBefore: 0 };
@@ -96,15 +98,24 @@
 
   // ---------- helpers de cálculo ----------
   function names() {
+    // Filas quitadas de la configuración inicial: se guardan como marcas en el grupo "Ocultas" ("Fijos::Split")
+    const hid = new Set();
+    for (const k of state.entries.keys()) { const [, g, n] = k.split("|"); if (g === "Ocultas") hid.add(n); }
     const rn = (grp, base) => {
-      const out = [...base];
+      const out = base.filter((n) => !hid.has(`${grp}::${n}`));
       for (const k of state.entries.keys()) {
         const [, g, n] = k.split("|");
-        if (g === grp && !out.includes(n)) out.push(n);
+        if (g === grp && !out.includes(n) && !hid.has(`${grp}::${n}`)) out.push(n);
       }
       return out;
     };
-    return { Ingresos: rn("Ingresos", cfg.INGRESOS), Fijos: rn("Fijos", cfg.FIJOS), Facturas: rn("Facturas", cfg.FACTURAS) };
+    // Tarjetas: las de config.js más cualquier grupo nuevo cargado, menos las quitadas
+    const cards = cfg.TARJETAS.filter((n) => !hid.has(`Tarjeta::${n}`));
+    for (const k of state.entries.keys()) {
+      const g = k.split("|")[1];
+      if (!RESERVED.has(g) && !cards.includes(g) && !hid.has(`Tarjeta::${g}`)) cards.push(g);
+    }
+    return { Ingresos: rn("Ingresos", cfg.INGRESOS), Fijos: rn("Fijos", cfg.FIJOS), Facturas: rn("Facturas", cfg.FACTURAS), Tarjetas: cards };
   }
   const totalsFor = (m, nm) => Calc.monthTotals(get, m, cfg, nm, state.months);
 
@@ -157,7 +168,7 @@
       stat("En tarjetas", t.tarjetasTotal, "", t.gastos ? `${fmt2.format(t.tarjetasTotal / t.gastos * 100)}% de los gastos` : "");
 
     // barras de gastos
-    const items = [{ label: "Fijos", v: t.fijos }, ...cfg.TARJETAS.map((c) => ({ label: c, v: t.tarjetas[c] }))]
+    const items = [{ label: "Fijos", v: t.fijos }, ...nm.Tarjetas.map((c) => ({ label: c, v: t.tarjetas[c] }))]
       .filter((x) => x.v > 0).sort((a, b) => b.v - a.v);
     const max = items[0]?.v || 1;
     $("bars").innerHTML = items.map((x) =>
@@ -182,7 +193,7 @@
     }
     h += row("Total fijos", t.fijos, p?.fijos, false, "total");
     h += sec("Tarjetas");
-    for (const c of cfg.TARJETAS) if (t.tarjetas[c] || p?.tarjetas[c]) h += row(c, t.tarjetas[c], p?.tarjetas[c], false, "sub");
+    for (const c of nm.Tarjetas) if (t.tarjetas[c] || p?.tarjetas[c]) h += row(c, t.tarjetas[c], p?.tarjetas[c], false, "sub");
     h += row("Total tarjetas", t.tarjetasTotal, p?.tarjetasTotal, false, "total");
     h += row("Total gastos", t.gastos, p?.gastos, false, "total");
     h += `<tr class="balance"><td>Balance</td><td class="num ${t.balance < 0 ? "neg" : "pos"}">${money(t.balance)}</td><td class="num muted">${p ? money(p.balance) : ""}</td><td></td></tr>`;
@@ -217,7 +228,7 @@
         `${auto ? ' title="Calculado desde Facturas (pestaña Servicios); escribí un valor para reemplazarlo"' : ""}>${shown === undefined ? "" : money(shown)}</td>`;
     };
     const line = (label, grp, name, cls, autoFn) =>
-      `<tr class="${cls || ""}"><td>${esc(label)}${isCustom(grp, name) ? ` <button class="mini del" data-del data-g="${esc(grp)}" data-n="${esc(name)}" title="Quitar esta fila de todos los meses" aria-label="Quitar ${esc(name)}">×</button>` : ""}</td>${ms.map((m) => cell(m, grp, name, autoFn ? autoFn(m) : undefined)).join("")}</tr>`;
+      `<tr class="${cls || ""}"><td>${esc(label)}${CFG_ROWS[grp] ? ` <button class="mini del" data-del data-g="${esc(grp)}" data-n="${esc(name)}" title="Quitar esta fila de todos los meses" aria-label="Quitar ${esc(name)}">×</button>` : ""}</td>${ms.map((m) => cell(m, grp, name, autoFn ? autoFn(m) : undefined)).join("")}</tr>`;
     const totalRow = (label, fn, cls = "total") =>
       `<tr class="${cls}"><td>${esc(label)}</td>${ms.map((m) => {
         const v = fn(m); const c = cls === "balance" ? (v < 0 ? "neg" : "pos") : "";
@@ -231,9 +242,9 @@
     h += section("Gastos fijos", "Fijos");
     for (const n of nm.Fijos) h += line(n, "Fijos", n, "sub", n === "Servicios" ? (m) => totals[m].servicioAuto : null);
     h += totalRow("Total fijos", (m) => totals[m].fijos);
-    h += section("Tarjetas");
-    for (const t of cfg.TARJETAS) {
-      h += `<tr class="card-title"><td>${esc(t)}</td>${ms.map(() => "<td></td>").join("")}</tr>`;
+    h += section("Tarjetas", "Tarjeta");
+    for (const t of nm.Tarjetas) {
+      h += `<tr class="card-title"><td>${esc(t)} <button class="mini del" data-del data-g="Tarjeta" data-n="${esc(t)}" title="Quitar esta tarjeta de todos los meses" aria-label="Quitar ${esc(t)}">×</button></td>${ms.map(() => "<td></td>").join("")}</tr>`;
       for (const f of cfg.TARJETA_FILAS) h += line(f, t, f, "sub");
       h += totalRow(`Total ${t}`, (m) => totals[m].tarjetas[t]);
     }
@@ -252,13 +263,14 @@
       `${own ? "" : ' title="Heredado de un mes anterior (o valor por defecto). Escribí para fijarlo desde este mes."'}>${pct(val)}</td>`;
     let h = `<tr><th>${monthLabel(m)}</th><th>Monto</th><th>% Sabri</th><th>Sabri</th><th>Casa</th></tr>`;
     for (const r of b.rows) {
-      h += `<tr class="sub"><td>${esc(r.name)}</td>` +
+      h += `<tr class="sub"><td>${esc(r.name)} <button class="mini del" data-del data-g="Facturas" data-n="${esc(r.name)}" title="Quitar este servicio de todos los meses" aria-label="Quitar ${esc(r.name)}">×</button></td>` +
         `<td class="num cell" data-m="${m}" data-g="Facturas" data-n="${esc(r.name)}">${r.monto === undefined ? "" : money(r.monto)}</td>` +
         pcell("Porcentajes", r.name, r.pctOtra, r.propio) +
         `<td class="num">${money(r.otra)}</td><td class="num">${money(r.casa)}</td></tr>`;
     }
     h += `<tr class="total"><td>Total</td><td class="num">${money(b.total)}</td><td class="num">${b.total ? pct(b.otra / b.total * 100) : ""}</td><td class="num">${money(b.otra)}</td><td class="num">${money(b.casa)}</td></tr>`;
     h += `<tr class="total"><td>Mi parte de la casa</td><td></td>${pcell("Porcentajes", "Mi parte casa", b.pctMia, b.pctMiaPropio)}<td></td><td class="num">${money(b.mia)}</td></tr>`;
+    h += '<tr><td colspan="5"><button class="mini" data-add="Facturas">+ agregar servicio</button></td></tr>';
     $("serv").innerHTML = h;
 
     const manual = get(m, "Fijos", "Servicios");
@@ -434,33 +446,62 @@
 
   // ---------- agregar / quitar filas de la planilla ----------
   const CFG_ROWS = { Ingresos: cfg.INGRESOS, Fijos: cfg.FIJOS, Facturas: cfg.FACTURAS };
-  const isCustom = (grp, name) => !!CFG_ROWS[grp] && !CFG_ROWS[grp].includes(name);
+  const lc = (x) => x.toLowerCase();
 
+  async function upsertEntry(row) {
+    const { data, error } = await sb.from("entries")
+      .upsert({ user_id: state.user.id, expr: null, ...row }, { onConflict: "user_id,month,grp,name" }).select("id").single();
+    if (error) { setStatus(error.message, true); return false; }
+    state.entries.set(key(row.month, row.grp, row.name), { id: data.id, amount: row.amount, expr: null });
+    return true;
+  }
+
+  // grp: "Ingresos" | "Fijos" | "Facturas" | "Tarjeta" (una tarjeta nueva)
   async function addRow(grp) {
-    const label = { Ingresos: "ingreso", Fijos: "gasto fijo", Facturas: "servicio" }[grp];
+    const isCard = grp === "Tarjeta";
+    const label = { Ingresos: "ingreso", Fijos: "gasto fijo", Facturas: "servicio", Tarjeta: "tarjeta" }[grp];
     const name = (prompt(`Nombre del nuevo ${label}:`) || "").trim().slice(0, 40);
     if (!name) return;
-    if (name.includes("|")) { setStatus("El nombre no puede incluir “|”", true); return; }
-    if (names()[grp].some((n) => n.toLowerCase() === name.toLowerCase())) { setStatus(`Ya existe “${name}”`, true); return; }
+    if (name.includes("|") || name.includes("::")) { setStatus("El nombre no puede incluir “|” ni “::”", true); return; }
+    if (isCard && RESERVED.has(name)) { setStatus(`“${name}” es un nombre reservado`, true); return; }
     const month = state.sel || state.months[state.months.length - 1];
     if (!month) { setStatus("Primero creá un mes con “+ Mes”", true); return; }
+    const nm = names();
+    if ((isCard ? nm.Tarjetas : nm[grp]).some((n) => lc(n) === lc(name))) { setStatus(`Ya existe “${name}”`, true); return; }
+    // si es una fila de la configuración inicial que se había quitado, vuelve con su nombre original
+    const base = isCard ? cfg.TARJETAS : CFG_ROWS[grp];
+    const canon = base.find((n) => lc(n) === lc(name)) || name;
+    const tag = `${isCard ? "Tarjeta" : grp}::${canon}`;
+    if (state.entries.has(key(HIDE_MONTH, "Ocultas", tag))) {
+      const { error } = await sb.from("entries").delete().eq("grp", "Ocultas").eq("name", tag);
+      if (error) { setStatus(error.message, true); return; }
+      state.entries.delete(key(HIDE_MONTH, "Ocultas", tag));
+    }
     // la fila existe mientras tenga algún valor cargado: se crea con 0 en el mes seleccionado
-    const { data, error } = await sb.from("entries")
-      .upsert({ user_id: state.user.id, month, grp, name, amount: 0, expr: null }, { onConflict: "user_id,month,grp,name" })
-      .select("id").single();
-    if (error) { setStatus(error.message, true); return; }
-    state.entries.set(key(month, grp, name), { id: data.id, amount: 0, expr: null });
-    setStatus(`“${name}” agregado. Cargá los montos de cada mes en la planilla.`);
+    const row = isCard ? { month, grp: canon, name: cfg.TARJETA_FILAS[0], amount: 0 } : { month, grp, name: canon, amount: 0 };
+    if (!(await upsertEntry(row))) return;
+    setStatus(`“${canon}” agregado. Cargá los montos de cada mes en la planilla.`);
     renderAll();
   }
 
+  // Quita cualquier fila (también las de la configuración inicial) de todos los meses.
   async function removeRow(grp, name) {
-    if (!confirm(`¿Quitar “${name}” de todos los meses? Se borran los montos cargados.`)) return;
-    const grps = grp === "Facturas" ? ["Facturas", "Porcentajes"] : [grp];
-    for (const g of grps) {
-      const { error } = await sb.from("entries").delete().eq("grp", g).eq("name", name);
+    const isCard = grp === "Tarjeta";
+    if (!confirm(`¿Quitar ${isCard ? "la tarjeta " : ""}“${name}” de todos los meses? Se borran los montos cargados y no se puede deshacer.`)) return;
+    const targets = isCard ? [[name, null]] : grp === "Facturas" ? [["Facturas", name], ["Porcentajes", name]] : [[grp, name]];
+    for (const [g, n] of targets) {
+      let q = sb.from("entries").delete().eq("grp", g);
+      if (n !== null) q = q.eq("name", n);
+      const { error } = await q;
       if (error) { setStatus(error.message, true); return; }
-      for (const k of [...state.entries.keys()]) { const [, kg, kn] = k.split("|"); if (kg === g && kn === name) state.entries.delete(k); }
+      for (const k of [...state.entries.keys()]) {
+        const [, kg, kn] = k.split("|");
+        if (kg === g && (n === null || kn === n)) state.entries.delete(k);
+      }
+    }
+    const base = isCard ? cfg.TARJETAS : CFG_ROWS[grp];
+    if (base && base.includes(name)) {
+      if (!(await upsertEntry({ month: HIDE_MONTH, grp: "Ocultas", name: `${isCard ? "Tarjeta" : grp}::${name}`, amount: 0 }))) return;
     }
     setStatus(`“${name}” quitado`);
     renderAll();

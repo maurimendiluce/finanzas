@@ -38,7 +38,8 @@
   }
 
   function monthTotals(get, month, cfg, extra = {}, months = [month]) {
-    const names = (grp, base) => [...new Set([...base, ...((extra[grp]) || [])])];
+    // extra[grp] es la lista completa vigente (ya sin las filas quitadas); sin ella, los valores por defecto
+    const names = (grp, base) => (extra[grp] ? extra[grp] : base);
     const ingresos = names("Ingresos", cfg.INGRESOS).reduce((s, k) => s + n0(get(month, "Ingresos", k)), 0);
 
     const auto = servicioAuto(get, months, month, cfg, names("Facturas", cfg.FACTURAS));
@@ -51,7 +52,7 @@
 
     const tarjetas = {};
     let tarjetasTotal = 0;
-    for (const t of cfg.TARJETAS) {
+    for (const t of names("Tarjetas", cfg.TARJETAS)) {
       tarjetas[t] = cfg.TARJETA_FILAS.reduce((s, k) => s + n0(get(month, t, k)), 0);
       tarjetasTotal += tarjetas[t];
     }

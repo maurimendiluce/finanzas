@@ -8,8 +8,8 @@
   const pct = (v) => `${fmt2.format(v)}%`;                 // v ya en %
   const pctF = (f) => (f >= 0 ? "+" : "") + fmt2.format(f * 100) + "%"; // f fracción
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const HIDDEN = new Set(["IPC", "Porcentajes", "Ocultas"]); // grupos internos: no son meses ni filas de la planilla
-  const RESERVED = new Set(["Ingresos", "Fijos", "Facturas", "IPC", "Porcentajes", "Ocultas"]); // no pueden ser nombre de tarjeta
+  const HIDDEN = new Set(["IPC", "Porcentajes", "Ocultas", "Estilos"]); // grupos internos: no son meses ni filas de la planilla
+  const RESERVED = new Set(["Ingresos", "Fijos", "Facturas", "IPC", "Porcentajes", "Ocultas", "Estilos"]); // no pueden ser nombre de tarjeta
   const HIDE_MONTH = "2000-01-01"; // mes ficticio donde se guardan las marcas de filas quitadas
 
   const sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
@@ -117,6 +117,19 @@
     }
     return { Ingresos: rn("Ingresos", cfg.INGRESOS), Fijos: rn("Fijos", cfg.FIJOS), Facturas: rn("Facturas", cfg.FACTURAS), Tarjetas: cards };
   }
+  // Color e insignia de cada tarjeta. El color elegido se guarda como entrada "Estilos" (índice 0-7).
+  const NK = 8;
+  const hash = (str) => [...str].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+  function cardColor(name) {
+    const v = get(HIDE_MONTH, "Estilos", name);
+    if (v !== undefined) return ((Math.round(v) % NK) + NK) % NK;
+    const i = cfg.TARJETAS.indexOf(name);          // las de config.js: colores distintos en orden
+    return (i >= 0 ? i : hash(name)) % NK;
+  }
+  const initials = (n) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+  async function cycleColor(name) {
+    if (await upsertEntry({ month: HIDE_MONTH, grp: "Estilos", name, amount: (cardColor(name) + 1) % NK })) renderAll();
+  }
   const totalsFor = (m, nm) => Calc.monthTotals(get, m, cfg, nm, state.months);
 
   // ---------- render ----------
@@ -168,12 +181,12 @@
       stat("En tarjetas", t.tarjetasTotal, "", t.gastos ? `${fmt2.format(t.tarjetasTotal / t.gastos * 100)}% de los gastos` : "");
 
     // barras de gastos
-    const items = [{ label: "Fijos", v: t.fijos }, ...nm.Tarjetas.map((c) => ({ label: c, v: t.tarjetas[c] }))]
+    const items = [{ label: "Fijos", v: t.fijos }, ...nm.Tarjetas.map((c) => ({ label: c, v: t.tarjetas[c], k: cardColor(c) }))]
       .filter((x) => x.v > 0).sort((a, b) => b.v - a.v);
     const max = items[0]?.v || 1;
     $("bars").innerHTML = items.map((x) =>
-      `<div class="bar-row"><span class="bar-label">${esc(x.label)}</span>` +
-      `<span class="bar"><i style="width:${(x.v / max * 100).toFixed(1)}%"></i></span>` +
+      `<div class="bar-row"${x.k !== undefined ? ` style="--k: var(--k${x.k})"` : ""}><span class="bar-label">${x.k !== undefined ? `<span class="badge sm">${esc(initials(x.label))}</span>` : ""}${esc(x.label)}</span>` +
+      `<span class="bar"><i style="width:${(x.v / max * 100).toFixed(1)}%${x.k !== undefined ? ";background:var(--k)" : ""}"></i></span>` +
       `<span class="bar-val">${money(x.v)} <small class="muted">${fmt.format(x.v / t.gastos * 100)}%</small></span></div>`).join("") || '<p class="muted">Sin gastos cargados.</p>';
 
     // detalle vs mes anterior
@@ -227,10 +240,10 @@
       return `<td class="num cell${auto ? " auto" : ""}" data-m="${m}" data-g="${esc(grp)}" data-n="${esc(name)}"` +
         `${auto ? ' title="Calculado desde Facturas (pestaña Servicios); escribí un valor para reemplazarlo"' : ""}>${shown === undefined ? "" : money(shown)}</td>`;
     };
-    const line = (label, grp, name, cls, autoFn) =>
-      `<tr class="${cls || ""}"><td>${esc(label)}${CFG_ROWS[grp] ? ` <button class="mini del" data-del data-g="${esc(grp)}" data-n="${esc(name)}" title="Quitar esta fila de todos los meses" aria-label="Quitar ${esc(name)}">×</button>` : ""}</td>${ms.map((m) => cell(m, grp, name, autoFn ? autoFn(m) : undefined)).join("")}</tr>`;
-    const totalRow = (label, fn, cls = "total") =>
-      `<tr class="${cls}"><td>${esc(label)}</td>${ms.map((m) => {
+    const line = (label, grp, name, cls, autoFn, st) =>
+      `<tr class="${cls || ""}"${st ? ` style="${st}"` : ""}><td>${esc(label)}${CFG_ROWS[grp] ? ` <button class="mini del" data-del data-g="${esc(grp)}" data-n="${esc(name)}" title="Quitar esta fila de todos los meses" aria-label="Quitar ${esc(name)}">×</button>` : ""}</td>${ms.map((m) => cell(m, grp, name, autoFn ? autoFn(m) : undefined)).join("")}</tr>`;
+    const totalRow = (label, fn, cls = "total", st) =>
+      `<tr class="${cls}"${st ? ` style="${st}"` : ""}><td>${esc(label)}</td>${ms.map((m) => {
         const v = fn(m); const c = cls === "balance" ? (v < 0 ? "neg" : "pos") : "";
         return `<td class="num ${c}">${money(v)}</td>`; }).join("")}</tr>`;
 
@@ -244,9 +257,11 @@
     h += totalRow("Total fijos", (m) => totals[m].fijos);
     h += section("Tarjetas", "Tarjeta");
     for (const t of nm.Tarjetas) {
-      h += `<tr class="card-title"><td>${esc(t)} <button class="mini del" data-del data-g="Tarjeta" data-n="${esc(t)}" title="Quitar esta tarjeta de todos los meses" aria-label="Quitar ${esc(t)}">×</button></td>${ms.map(() => "<td></td>").join("")}</tr>`;
-      for (const f of cfg.TARJETA_FILAS) h += line(f, t, f, "sub");
-      h += totalRow(`Total ${t}`, (m) => totals[m].tarjetas[t]);
+      const st = `--k: var(--k${cardColor(t)})`;
+      h += `<tr class="card-gap"><td colspan="${ms.length + 1}"></td></tr>`;
+      h += `<tr class="card-title" style="${st}"><td><span class="badge" data-card="${esc(t)}" title="Click para cambiar el color" role="button" tabindex="0">${esc(initials(t))}</span>${esc(t)} <button class="mini del" data-del data-g="Tarjeta" data-n="${esc(t)}" title="Quitar esta tarjeta de todos los meses" aria-label="Quitar ${esc(t)}">×</button></td>${ms.map(() => "<td></td>").join("")}</tr>`;
+      for (const f of cfg.TARJETA_FILAS) h += line(f, t, f, "sub card-sub", null, st);
+      h += totalRow(`Total ${t}`, (m) => totals[m].tarjetas[t], "total card-total", st);
     }
     h += section("Facturas de servicios", "Facturas");
     for (const f of nm.Facturas) h += line(f, "Facturas", f, "sub");
@@ -488,7 +503,7 @@
   async function removeRow(grp, name) {
     const isCard = grp === "Tarjeta";
     if (!confirm(`¿Quitar ${isCard ? "la tarjeta " : ""}“${name}” de todos los meses? Se borran los montos cargados y no se puede deshacer.`)) return;
-    const targets = isCard ? [[name, null]] : grp === "Facturas" ? [["Facturas", name], ["Porcentajes", name]] : [[grp, name]];
+    const targets = isCard ? [[name, null], ["Estilos", name]] : grp === "Facturas" ? [["Facturas", name], ["Porcentajes", name]] : [[grp, name]];
     for (const [g, n] of targets) {
       let q = sb.from("entries").delete().eq("grp", g);
       if (n !== null) q = q.eq("name", n);
@@ -656,6 +671,7 @@
   document.addEventListener("click", (e) => {
     const t = e.target;
     const add = t.closest("[data-add]"); if (add) { addRow(add.dataset.add); return; }
+    const bd = t.closest(".badge[data-card]"); if (bd) { cycleColor(bd.dataset.card); return; }
     const del = t.closest("[data-del]"); if (del) { removeRow(del.dataset.g, del.dataset.n); return; }
     const tick = t.closest("[data-tick]"); if (tick) { togglePaid(tick.dataset.id, tick.dataset.date); return; }
     const chip = t.closest(".pchip"); if (chip) { openPay({ id: chip.dataset.id, date: chip.dataset.date }); return; }

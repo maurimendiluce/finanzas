@@ -137,3 +137,20 @@ dialog label.check input { width: auto; }
 #feed details { margin-top: 8px; }
 #feed summary { cursor: pointer; }
 #feed a { color: var(--accent); }
+
+/* ---- v5: tarjetas con color e insignia ---- */
+:root { --k0: #1f6f5c; --k1: #2f5fa7; --k2: #8a4fb0; --k3: #c8743a; --k4: #b3382c; --k5: #a8861f; --k6: #2c8a9c; --k7: #6b6f76; --on-k: #ffffff; }
+@media (prefers-color-scheme: dark) {
+  :root { --k0: #3fa88f; --k1: #6a9be0; --k2: #b98ae0; --k3: #e39a62; --k4: #ee7b6e; --k5: #d3b24a; --k6: #55b8c9; --k7: #9aa0a8; --on-k: #10161a; }
+}
+.badge { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; margin-right: 8px; vertical-align: middle;
+  background: var(--k, var(--accent)); color: var(--on-k); font-size: .72rem; font-weight: 700; letter-spacing: .02em; cursor: pointer; user-select: none; }
+.badge.sm { width: 22px; height: 22px; border-radius: 6px; font-size: .62rem; cursor: default; }
+.bar-label { display: flex; align-items: center; }
+tr.card-gap td { padding: 0; height: 18px; border: 0; background: var(--card); }
+tr.card-gap td:first-child { background: var(--card); }
+tr.card-title td { background: color-mix(in srgb, var(--k) 18%, var(--card)); border-top: 3px solid var(--k); padding-top: 8px; padding-bottom: 8px; }
+tr.card-title td:first-child { background: color-mix(in srgb, var(--k) 18%, var(--card)); border-left: 6px solid var(--k); }
+tr.card-sub td:first-child { border-left: 6px solid var(--k); padding-left: 42px; }
+tr.card-total td { background: color-mix(in srgb, var(--k) 9%, var(--card)); border-top: 1px solid var(--line); border-bottom: 3px solid var(--k); font-weight: 700; }
+tr.card-total td:first-child { background: color-mix(in srgb, var(--k) 9%, var(--card)); border-left: 6px solid var(--k); }
